@@ -20,13 +20,9 @@ const FIREBASE_CONFIG = {
   appId: "1:804328953904:web:e760545b579bf2527075f5",
 };
 
-// ════════════════════════════════════════════════════
-//  🔐 AUTH CONFIG
-//  - Admin: create a user in Firebase Console > Authentication > Email/Password
-//  - Viewer: shared read-only PIN (no Firebase account needed)
-// ════════════════════════════════════════════════════
-const ADMIN_EMAIL  = "admin@fflc.app";   // ← change to your admin email
-const VIEWER_PIN   = "fflc2026";         // ← change to your preferred viewer PIN
+
+const ADMIN_EMAIL  = "admin@fflc.app";  
+const VIEWER_PIN   = "fflc2026";        
 
 // Firestore collection paths  (compatible with existing security rules)
 const APP_ID = typeof __app_id !== "undefined" ? __app_id : "fflc-portal";
@@ -406,7 +402,7 @@ function LoginScreen({ onAdmin, onViewer, fbErr }) {
         <div style={{ background:"#091420", border:"1px solid #0e1e2c", borderRadius:18, padding:22, boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
           {/* Tab */}
           <div style={{ display:"flex", background:"#060d16", borderRadius:10, padding:3, marginBottom:20 }}>
-            {[["viewer","👁  View Only"],["admin","🔐  Admin"]].map(([k,l])=>(
+            {[["member","👁  Members"],["admin","🔐  Admin"]].map(([k,l])=>(
               <button key={k} onClick={()=>{setTab(k);setErr("");}} className="tappable"
                 style={{ flex:1, padding:"9px 6px", borderRadius:8, border:"none", background:tab===k?"#16a34a":"transparent", color:tab===k?"#fff":"#2d5060", fontWeight:700, fontSize:13 }}>
                 {l}
@@ -416,7 +412,7 @@ function LoginScreen({ onAdmin, onViewer, fbErr }) {
 
           {tab==="viewer" ? (
             <div>
-              <p style={{ fontSize:13, color:"#2d5060", marginBottom:14, lineHeight:1.55 }}>Enter the group PIN to browse FFLC data. You won't be able to make changes.</p>
+              <p style={{ fontSize:13, color:"#2d5060", marginBottom:14, lineHeight:1.55 }}>Enter the group PIN to browse FFLC data.</p>
               <Lbl>Group PIN</Lbl>
               <div style={{ position:"relative" }}>
                 <input {...inp()} type={show?"text":"password"} value={pin} onChange={e=>setPin(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••" />
@@ -476,7 +472,7 @@ function NavInner({ NAV, page, setPage, isAdmin, online, onSeed, onLogout, onClo
 
       <div style={{ margin:"10px 10px 4px", background: isAdmin?"rgba(34,197,94,0.07)":"rgba(56,189,248,0.07)", border:`1px solid ${isAdmin?"rgba(34,197,94,0.15)":"rgba(56,189,248,0.15)"}`, borderRadius:8, padding:"7px 12px", display:"flex", alignItems:"center", gap:8 }}>
         {isAdmin?<I.Shield width={13} height={13} style={{ color:"#4ade80" }} />:<I.Eye width={13} height={13} style={{ color:"#38bdf8" }} />}
-        <span style={{ fontSize:12, fontWeight:700, color:isAdmin?"#4ade80":"#38bdf8" }}>{isAdmin?"Admin Access":"View Only"}</span>
+        <span style={{ fontSize:12, fontWeight:700, color:isAdmin?"#4ade80":"#38bdf8" }}>{isAdmin?"Admin Access":"member"}</span>
         {!online && <span style={{ fontSize:10, color:"#f59e0b", marginLeft:"auto" }}>Offline</span>}
       </div>
 
@@ -574,7 +570,7 @@ function ReadOnlyBadge() {
   return (
     <div style={{ background:"rgba(56,189,248,0.06)", border:"1px solid rgba(56,189,248,0.14)", borderRadius:9, padding:"9px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:9 }}>
       <I.Info width={15} height={15} style={{ color:"#38bdf8", flexShrink:0 }} />
-      <span style={{ fontSize:13, color:"#38bdf8" }}>You're in <strong>view-only mode</strong>. Sign in as admin to make changes.</span>
+      <span style={{ fontSize:13, color:"#38bdf8" }}>Sign in as admin to make changes.</span>
     </div>
   );
 }

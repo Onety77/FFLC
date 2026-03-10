@@ -12,7 +12,7 @@ import {
 //  🔥 FIREBASE CONFIG — replace with your project values
 // ════════════════════════════════════════════════════
 const FIREBASE_CONFIG = {
-   apiKey: "AIzaSyB_gNokFnucM2nNAhhkRRnPsPNBAShYlMs",
+ apiKey: "AIzaSyB_gNokFnucM2nNAhhkRRnPsPNBAShYlMs",
   authDomain: "it-token.firebaseapp.com",
   projectId: "it-token",
   storageBucket: "it-token.firebasestorage.app",
@@ -20,9 +20,11 @@ const FIREBASE_CONFIG = {
   appId: "1:804328953904:web:e760545b579bf2527075f5",
 };
 
+// ════════════════════════════════════════════════════
 
-const ADMIN_EMAIL  = "admin@fflc.app";  
-const VIEWER_PIN   = "fflc2026";        
+// ════════════════════════════════════════════════════
+const ADMIN_EMAIL  = "admin@gmail.com";  
+const VIEWER_PIN   = "fflc2026";         
 
 // Firestore collection paths  (compatible with existing security rules)
 const APP_ID = typeof __app_id !== "undefined" ? __app_id : "fflc-portal";
@@ -139,9 +141,12 @@ const I = {
 //  GLOBAL STYLES
 // ════════════════════════════════════════════════════
 const GLOBAL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Mono:wght@400;500&display=swap');
+/* FONT OPTION A (current): Plus Jakarta Sans — clean, readable, modern feel */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+/* FONT OPTION B (original Bricolage Grotesque — more expressive/editorial): */
+/* @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Mono:wght@400;500&display=swap'); */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{background:#070d14;color:#cdd6e0;font-family:'Bricolage Grotesque',sans-serif;overflow-x:hidden}
+body{background:#070d14;color:#cdd6e0;font-family:'Plus Jakarta Sans',sans-serif /* swap to 'Bricolage Grotesque' to revert */;overflow-x:hidden}
 input,select,textarea,button{font-family:inherit}
 ::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -164,7 +169,7 @@ input:focus,select:focus{outline:none;border-color:#22c55e!important;box-shadow:
 //  ROOT
 // ════════════════════════════════════════════════════
 export default function App() {
-  const [role,    setRole]    = useState(null);   // null | "admin" | "viewer"
+  const [role,    setRole]    = useState(null);   // null | "admin" | "member"
   const [fbUser,  setFbUser]  = useState(null);
   const [booting, setBooting] = useState(true);
   const [page,    setPage]    = useState("dashboard");
@@ -178,6 +183,7 @@ export default function App() {
   const [fbErr,    setFbErr]    = useState(null);
 
   const isAdmin = role === "admin";
+  // role is "admin" | "member" (member = PIN-based read-only access)
 
   // ── Firebase auth listener ─────────────────────────────
   useEffect(() => {
@@ -227,18 +233,22 @@ export default function App() {
     await Promise.all(list.map(m => setDoc(doc(db, COL.members, m.id), m)));
   }, [online]);
 
-  const wPayments = useCallback(async map => {
+  const wPayments = useCallback(async (map, allMembers) => {
     setPayments(map);
     if (!online) return;
     const { db } = fb();
+    // Build per-member months map — include ALL members so that if someone
+    // has all payments removed, their doc gets a clean empty months:{} written
+    // (prevents stale ticks reappearing after logout)
     const byMid = {};
+    (allMembers || MEMBERS_SEED).forEach(m => { byMid[m.id] = {}; });
     Object.entries(map).forEach(([k,v]) => {
       const mid = k.split("-")[0];
       if (!byMid[mid]) byMid[mid] = {};
       byMid[mid][k] = v;
     });
     await Promise.all(Object.entries(byMid).map(([mid, months]) =>
-      setDoc(doc(db, COL.payments, mid), { memberId:mid, months }, { merge:true })
+      setDoc(doc(db, COL.payments, mid), { memberId:mid, months }) // full overwrite — no merge
     ));
   }, [online]);
 
@@ -285,7 +295,7 @@ export default function App() {
   };
   const loginViewer = pin => {
     if (pin !== VIEWER_PIN) throw new Error("Incorrect PIN. Try again.");
-    setRole("viewer"); setOnline(true);
+    setRole("member"); setOnline(true);
   };
   const logout = async () => {
     if (fbUser) { const { auth } = fb(); await signOut(auth); }
@@ -368,7 +378,9 @@ function Logo({ size=38 }) {
 //  LOGIN SCREEN
 // ════════════════════════════════════════════════════
 function LoginScreen({ onAdmin, onViewer, fbErr }) {
-  const [tab,   setTab]   = useState("viewer");
+  // "member" tab = PIN-only  (no Firebase account needed, read-only access)
+  // "admin"  tab = email + password via Firebase Auth
+  const [tab,   setTab]   = useState("member");
   const [email, setEmail] = useState("");
   const [pw,    setPw]    = useState("");
   const [pin,   setPin]   = useState("");
@@ -376,10 +388,20 @@ function LoginScreen({ onAdmin, onViewer, fbErr }) {
   const [busy,  setBusy]  = useState(false);
   const [show,  setShow]  = useState(false);
 
+  // Reset ALL fields + visibility when switching tabs so nothing leaks across
+  function switchTab(k) {
+    setTab(k);
+    setErr("");
+    setEmail("");
+    setPw("");
+    setPin("");
+    setShow(false);
+  }
+
   async function go() {
     setErr(""); setBusy(true);
     try {
-      if (tab==="admin") await onAdmin(email, pw);
+      if (tab === "admin") await onAdmin(email, pw);
       else onViewer(pin);
     } catch(e) {
       setErr(e.message?.replace("Firebase: ","")?.replace(/\s*\(auth.*\)/,"") || "Invalid credentials");
@@ -387,7 +409,7 @@ function LoginScreen({ onAdmin, onViewer, fbErr }) {
     setBusy(false);
   }
 
-  const inp = w => ({ style:{ width:w||"100%", background:"#09111a", border:"1px solid #152030", borderRadius:10, padding:"12px 14px", color:"#cdd6e0", fontSize:15 } });
+  const inpStyle = { width:"100%", background:"#09111a", border:"1px solid #152030", borderRadius:10, padding:"12px 14px", color:"#cdd6e0", fontSize:15 };
 
   return (
     <div style={{ minHeight:"100dvh", background:"linear-gradient(150deg,#070d14 55%,#051509)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px 16px" }}>
@@ -395,39 +417,51 @@ function LoginScreen({ onAdmin, onViewer, fbErr }) {
       <div style={{ width:"100%", maxWidth:370, animation:"_up 0.35s ease both" }}>
         <div style={{ textAlign:"center", marginBottom:28 }}>
           <Logo size={58} />
-          <h1 style={{ marginTop:13, fontSize:23, fontWeight:800, color:"#eaf0f8", letterSpacing:"-0.04em" }}>FFLC Portal</h1>
+          <h1 style={{ marginTop:13, fontSize:23, fontWeight:800, color:"#eaf0f8", letterSpacing:"-0.02em" }}>FFLC Portal</h1>
           <p style={{ color:"#2d5060", fontSize:13, marginTop:5 }}>Family & Friends Landowners Cooperative</p>
         </div>
 
         <div style={{ background:"#091420", border:"1px solid #0e1e2c", borderRadius:18, padding:22, boxShadow:"0 20px 60px rgba(0,0,0,0.6)" }}>
-          {/* Tab */}
-          <div style={{ display:"flex", background:"#060d16", borderRadius:10, padding:3, marginBottom:20 }}>
-            {[["member","👁  Members"],["admin","🔐  Admin"]].map(([k,l])=>(
-              <button key={k} onClick={()=>{setTab(k);setErr("");}} className="tappable"
+          {/* Tab: Member | Admin */}
+          <div style={{ display:"flex", background:"#060d16", borderRadius:10, padding:3, marginBottom:22 }}>
+            {[["member","👥  Member"],["admin","🔐  Admin"]].map(([k,l])=>(
+              <button key={k} onClick={()=>switchTab(k)} className="tappable"
                 style={{ flex:1, padding:"9px 6px", borderRadius:8, border:"none", background:tab===k?"#16a34a":"transparent", color:tab===k?"#fff":"#2d5060", fontWeight:700, fontSize:13 }}>
                 {l}
               </button>
             ))}
           </div>
 
-          {tab==="viewer" ? (
-            <div>
-              <p style={{ fontSize:13, color:"#2d5060", marginBottom:14, lineHeight:1.55 }}>Enter the group PIN to browse FFLC data.</p>
+          {/* Member tab — PIN field only. Uses key so React fully remounts on tab switch. */}
+          {tab === "member" && (
+            <div key="member-fields">
               <Lbl>Group PIN</Lbl>
               <div style={{ position:"relative" }}>
-                <input {...inp()} type={show?"text":"password"} value={pin} onChange={e=>setPin(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••" />
+                <input style={inpStyle} type={show?"text":"password"} value={pin}
+                  onChange={e=>setPin(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}
+                  placeholder="Enter group PIN" autoFocus />
                 <button onClick={()=>setShow(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:"#2d5060" }}>
                   <I.Eye width={16} height={16} />
                 </button>
               </div>
             </div>
-          ):(
-            <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
-              <div><Lbl>Admin Email</Lbl><input {...inp()} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder={ADMIN_EMAIL} onKeyDown={e=>e.key==="Enter"&&go()} /></div>
-              <div>
+          )}
+
+
+{tab === "admin" && (
+  <div key="admin-fields" style={{ display:"flex", flexDirection:"column", gap:13 }}>
+    <div>
+      <Lbl>Username</Lbl>
+      <input style={inpStyle} type="text" value={email}
+        onChange={e=>setEmail(e.target.value)} placeholder="Username"
+        onKeyDown={e=>e.key==="Enter"&&go()} autoFocus />
+    </div>
+    <div>
                 <Lbl>Password</Lbl>
                 <div style={{ position:"relative" }}>
-                  <input {...inp()} type={show?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&go()} />
+                  <input style={inpStyle} type={show?"text":"password"} value={pw}
+                    onChange={e=>setPw(e.target.value)} placeholder="••••••••"
+                    onKeyDown={e=>e.key==="Enter"&&go()} />
                   <button onClick={()=>setShow(s=>!s)} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", color:"#2d5060" }}>
                     <I.Eye width={16} height={16} />
                   </button>
@@ -441,7 +475,7 @@ function LoginScreen({ onAdmin, onViewer, fbErr }) {
 
           <button onClick={go} disabled={busy} className="tappable"
             style={{ width:"100%", marginTop:18, background:"linear-gradient(135deg,#16a34a,#15803d)", border:"none", borderRadius:10, padding:"13px", color:"#fff", fontWeight:800, fontSize:15, display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity:busy?.7:1 }}>
-            {busy?<><I.Spin width={16} height={16} /> Signing in…</>:tab==="viewer"?"Enter Dashboard":"Sign In as Admin"}
+            {busy ? <><I.Spin width={16} height={16} /> Signing in…</> : tab==="member" ? "Enter Dashboard" : "Sign In as Admin"}
           </button>
         </div>
         <p style={{ textAlign:"center", color:"#0e1e2c", fontSize:11, marginTop:18 }}>FFLC · Est. June 2025 · Kano, Nigeria</p>
@@ -470,9 +504,9 @@ function NavInner({ NAV, page, setPage, isAdmin, online, onSeed, onLogout, onClo
         <button onClick={onClose} className="tappable" style={{ background:"none", border:"none", color:"#162838", display:"flex", padding:4 }}><I.X width={18} height={18} /></button>
       </div>
 
-      <div style={{ margin:"10px 10px 4px", background: isAdmin?"rgba(34,197,94,0.07)":"rgba(56,189,248,0.07)", border:`1px solid ${isAdmin?"rgba(34,197,94,0.15)":"rgba(56,189,248,0.15)"}`, borderRadius:8, padding:"7px 12px", display:"flex", alignItems:"center", gap:8 }}>
-        {isAdmin?<I.Shield width={13} height={13} style={{ color:"#4ade80" }} />:<I.Eye width={13} height={13} style={{ color:"#38bdf8" }} />}
-        <span style={{ fontSize:12, fontWeight:700, color:isAdmin?"#4ade80":"#38bdf8" }}>{isAdmin?"Admin Access":"member"}</span>
+      <div style={{ margin:"10px 10px 4px", background: isAdmin?"rgba(34,197,94,0.07)":"rgba(34,197,94,0.04)", border:`1px solid ${isAdmin?"rgba(34,197,94,0.15)":"rgba(34,197,94,0.08)"}`, borderRadius:8, padding:"7px 12px", display:"flex", alignItems:"center", gap:8 }}>
+        {isAdmin?<I.Shield width={13} height={13} style={{ color:"#4ade80" }} />:<I.Users width={13} height={13} style={{ color:"#4ade80" }} />}
+        <span style={{ fontSize:12, fontWeight:700, color:"#4ade80" }}>{isAdmin?"Admin":"Member"}</span>
         {!online && <span style={{ fontSize:10, color:"#f59e0b", marginLeft:"auto" }}>Offline</span>}
       </div>
 
@@ -517,9 +551,9 @@ function TopBar({ label, isAdmin, online, onMenu }) {
         <button onClick={onMenu} className="tappable" style={{ background:"none", border:"none", color:"#2d5060", display:"flex", padding:3 }}><I.Menu width={22} height={22} /></button>
         <span style={{ fontWeight:800, fontSize:16, color:"#dde8f0", letterSpacing:"-0.02em" }}>{label}</span>
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:6, background:isAdmin?"rgba(34,197,94,0.08)":"rgba(56,189,248,0.08)", border:`1px solid ${isAdmin?"rgba(34,197,94,0.18)":"rgba(56,189,248,0.18)"}`, borderRadius:20, padding:"4px 10px" }}>
-        <div style={{ width:6, height:6, borderRadius:"50%", background:online?(isAdmin?"#22c55e":"#38bdf8"):"#f59e0b" }} />
-        <span style={{ fontSize:11, fontWeight:700, color:isAdmin?"#4ade80":"#38bdf8" }}>{isAdmin?"Admin":"Viewer"}</span>
+      <div style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.18)", borderRadius:20, padding:"4px 10px" }}>
+        <div style={{ width:6, height:6, borderRadius:"50%", background:online?"#22c55e":"#f59e0b" }} />
+        <span style={{ fontSize:11, fontWeight:700, color:"#4ade80" }}>{isAdmin?"Admin":"Member"}</span>
       </div>
     </header>
   );
@@ -566,14 +600,7 @@ function Stat({ label, value, sub, color="#22c55e" }) {
 function Pill({ text, color="#22c55e" }) {
   return <span style={{ fontSize:10, fontWeight:700, color, background:`${color}16`, border:`1px solid ${color}25`, borderRadius:20, padding:"2px 9px", whiteSpace:"nowrap" }}>{text}</span>;
 }
-function ReadOnlyBadge() {
-  return (
-    <div style={{ background:"rgba(56,189,248,0.06)", border:"1px solid rgba(56,189,248,0.14)", borderRadius:9, padding:"9px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:9 }}>
-      <I.Info width={15} height={15} style={{ color:"#38bdf8", flexShrink:0 }} />
-      <span style={{ fontSize:13, color:"#38bdf8" }}>Sign in as admin to make changes.</span>
-    </div>
-  );
-}
+// ReadOnlyBadge removed — members can see everything without being reminded of limitations
 function Hdr({ title, right }) {
   return (
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
@@ -694,8 +721,6 @@ function MembersPage({ members, payments, wMembers, isAdmin }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
       <Hdr title={`Members (${members.length})`} right={isAdmin&&<Btn onClick={()=>setOpen(s=>!s)}><I.Plus width={14} height={14} /> Add</Btn>} />
-      {!isAdmin && <ReadOnlyBadge />}
-
       {open && isAdmin && (
         <Card style={{ padding:18 }} className="apop">
           <div style={{ fontSize:14, fontWeight:700, color:"#b0c4d4", marginBottom:14 }}>New Member</div>
@@ -747,7 +772,8 @@ function MembersPage({ members, payments, wMembers, isAdmin }) {
 //  PAYMENTS PAGE
 // ════════════════════════════════════════════════════
 function PaymentsPage({ members, payments, wPayments, isAdmin }) {
-  const [year, setYear] = useState("2025");
+  // Default to current calendar year so users don't have to switch every time
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const monthKeys = MO.map((_,i) => padM(i));
 
   function toggle(mid, month) {
@@ -755,7 +781,7 @@ function PaymentsPage({ members, payments, wPayments, isAdmin }) {
     const k = `${mid}-${year}-${month}`;
     const n = { ...payments };
     if (n[k]) delete n[k]; else n[k] = 20000;
-    wPayments(n);
+    wPayments(n, members); // pass members so empty-member docs are also written
   }
   function editAmt(mid, month) {
     if (!isAdmin) return;
@@ -766,7 +792,7 @@ function PaymentsPage({ members, payments, wPayments, isAdmin }) {
     const n   = { ...payments };
     const amt = parseInt(raw.replace(/\D/g,""));
     if (!isNaN(amt) && amt>0) n[k]=amt; else delete n[k];
-    wPayments(n);
+    wPayments(n, members);
   }
 
   const rowTotals = members.map(m => monthKeys.reduce((s,mo)=>s+(payments[`${m.id}-${year}-${mo}`]||0),0));
@@ -786,7 +812,6 @@ function PaymentsPage({ members, payments, wPayments, isAdmin }) {
         </div>
       } />
 
-      {!isAdmin && <ReadOnlyBadge />}
       {isAdmin && (
         <div style={{ background:"rgba(251,191,36,0.06)", border:"1px solid rgba(251,191,36,0.14)", borderRadius:9, padding:"8px 13px", fontSize:12, color:"#fbbf24", display:"flex", gap:8, alignItems:"center" }}>
           <I.Info width={14} height={14} /> Tap cell to toggle ₦20K · Double-tap for custom amount
@@ -869,9 +894,10 @@ function ExpensesPage({ expenses, wExpenses, delExpense, isAdmin }) {
   const [open,   setOpen]   = useState(false);
   const [editId, setEditId] = useState(null);
   const [cat,    setCat]    = useState("All");
-  const [form,   setForm]   = useState({ date:"", category:EXPENSE_CATS[0], description:"", amount:"" });
+  const todayStr = new Date().toISOString().slice(0,10); // yyyy-mm-dd
+  const [form,   setForm]   = useState({ date:todayStr, category:EXPENSE_CATS[0], description:"", amount:"" });
 
-  function openNew()  { setForm({ date:"", category:EXPENSE_CATS[0], description:"", amount:"" }); setEditId(null); setOpen(true); }
+  function openNew()  { const t=new Date().toISOString().slice(0,10); setForm({ date:t, category:EXPENSE_CATS[0], description:"", amount:"" }); setEditId(null); setOpen(true); }
   function openEdit(e){ setForm({ date:e.date, category:e.category, description:e.description, amount:e.amount }); setEditId(e.id); setOpen(true); }
   function cancel()   { setOpen(false); setEditId(null); }
 
@@ -893,8 +919,6 @@ function ExpensesPage({ expenses, wExpenses, delExpense, isAdmin }) {
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
       <Hdr title="Expenditures" right={isAdmin&&<Btn onClick={openNew} red><I.Plus width={14} height={14} /> Add</Btn>} />
-      {!isAdmin && <ReadOnlyBadge />}
-
       <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
         {["All",...EXPENSE_CATS].map(c=>(
           <button key={c} onClick={()=>setCat(c)} className="tappable"
